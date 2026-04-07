@@ -7,6 +7,7 @@ spl_autoload_register(array(new HTML5PHP_Autoloader(), 'autoload'));
  */
 class HTML5PHP_Autoloader
 {
+	public $path;
 	/**
 	 * Constructor
 	 */

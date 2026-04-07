@@ -38,7 +38,7 @@ set_include_path(realpath(dirname(__FILE__).'/libraries').PATH_SEPARATOR.get_inc
 
 // Autoloading of classes allows us to include files only when they're
 // needed. If we've got a cached copy, for example, only Zend_Cache is loaded.
-function __autoload($class_name) {
+spl_autoload_register(function ($class_name) {
 	static $mapping = array(
 		'Zend_Cache' => 'Zend/Cache.php'
 	);
@@ -49,7 +49,7 @@ function __autoload($class_name) {
 	} else {
 		return false;
 	}
-}
+});
 require_once dirname(__FILE__).'/config.php';
 if (!$options->caching) die('Caching is disabled');
 

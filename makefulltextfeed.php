@@ -30,7 +30,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 error_reporting(E_ALL ^ E_NOTICE);
 libxml_use_internal_errors(true);
-libxml_disable_entity_loader(true);
+if (PHP_VERSION_ID < 80000) { libxml_disable_entity_loader(true); }
 ini_set("display_errors", 1);
 @set_time_limit(120);
 
@@ -588,8 +588,9 @@ if ($accept !== 'html') {
 	$feed = new SimplePie();
 	// some feeds use the text/html content type - force_feed tells SimplePie to process anyway
 	$feed->force_feed(true);
-	$feed->set_file_class('SimplePie_HumbleHttpAgent');
-	$feed->set_sanitize_class('DisableSimplePieSanitize');
+	$registry = $feed->get_registry();
+	$registry->register(\SimplePie\File::class, 'SimplePie_HumbleHttpAgent', true);
+	$registry->register(\SimplePie\Sanitize::class, 'DisableSimplePieSanitize', true);
 	// need to assign this manually it seems
 	$feed->sanitize = new DisableSimplePieSanitize();
 	//$feed->set_feed_url($url); // colons appearing in the URL's path get encoded
@@ -1112,8 +1113,9 @@ foreach ($items as $key => $item) {
 		//TODO: ensure $effective_url is valid witout - sometimes it causes problems, e.g.
 		//http://www.siasat.pk/forum/showthread.php?108883-Pakistan-Chowk-by-Rana-Mubashir-–-25th-March-2012-Special-Program-from-Liari-(Karachi)
 		//temporary measure: use utf8_encode()
-		$newitem->addElement('dc:identifier', remove_url_cruft(utf8_encode($effective_url)));
-		if ($favour_effective_url) $newitem->setLink(remove_url_cruft(utf8_encode($effective_url)));
+		$effective_url_utf8 = mb_check_encoding($effective_url, 'UTF-8') ? $effective_url : mb_convert_encoding($effective_url, 'UTF-8', 'ISO-8859-1');
+		$newitem->addElement('dc:identifier', remove_url_cruft($effective_url_utf8));
+		if ($favour_effective_url) $newitem->setLink(remove_url_cruft($effective_url_utf8));
 	} else {
 		$newitem->addElement('dc:identifier', remove_url_cruft($item->get_permalink()));
 	}

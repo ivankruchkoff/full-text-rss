@@ -63,6 +63,16 @@ class RollingCurlException extends Exception {
  * @throws RollingCurlException
  */
 class RollingCurl implements Countable {
+	private function curlHandleKey($handle): string {
+		if (is_object($handle)) {
+			return (string) spl_object_id($handle);
+		}
+		if (function_exists('get_resource_id') && is_resource($handle)) {
+			return (string) get_resource_id($handle);
+		}
+		return (string) $handle;
+	}
+
     /**
      * @var int
      *
@@ -165,7 +175,7 @@ class RollingCurl implements Countable {
      *
      * @return int
      */
-    public function count() {
+    public function count(): int {
         return count($this->requests);
     }	
 	
@@ -294,7 +304,7 @@ class RollingCurl implements Countable {
             curl_multi_add_handle($master, $ch);
 
             // Add to our request Maps
-            $key = (string) $ch;
+            $key = $this->curlHandleKey($ch);
             $this->requestMap[$key] = $i;
         }
 
@@ -312,7 +322,7 @@ class RollingCurl implements Countable {
                 // send the return values to the callback function.
                 $callback = $this->callback;
                 if (is_callable($callback)) {
-                    $key = (string) $done['handle'];
+                    $key = $this->curlHandleKey($done['handle']);
                     $request = $this->requests[$this->requestMap[$key]];
                     unset($this->requestMap[$key]);
                     call_user_func($callback, $output, $info, $request);
@@ -326,7 +336,7 @@ class RollingCurl implements Countable {
                     curl_multi_add_handle($master, $ch);
 
                     // Add to our request Maps
-                    $key = (string) $ch;
+                    $key = $this->curlHandleKey($ch);
                     $this->requestMap[$key] = $i;
                     $i++;
                 }

@@ -123,7 +123,7 @@ class Readability
 			// Can we avoid this encoding/deocding step? Test on:
 			// http://www.medialens.org/index.php/alerts/alert-archive/2017/837-undermining-democracy-corporate-media-bias-on-jeremy-corbyn-boris-johnson-and-syria.html
 			$html = str_replace('&apos;', "'", $html); // other named entities handled okay
-			$html = mb_convert_encoding($html, 'HTML-ENTITIES', "UTF-8");
+			$html = mb_encode_numericentity($html, [0x80, 0x10FFFF, 0, ~0], 'UTF-8');
 			//$html = mb_convert_encoding($html, "UTF-8", 'HTML-ENTITIES');
 			$this->dom = @Layershifter\Gumbo\Parser::load($html);
 			//if (isset($_GET['dumppost'])) echo $this->dom->saveHTML();
@@ -142,7 +142,7 @@ class Readability
 		if ($this->dom === null) {
 			$this->dom = new DOMDocument();
 			$this->dom->preserveWhiteSpace = false;
-			$html = mb_convert_encoding($html, 'HTML-ENTITIES', "UTF-8");
+			$html = mb_encode_numericentity($html, [0x80, 0x10FFFF, 0, ~0], 'UTF-8');
 			@$this->dom->loadHTML($html);
 			//if (isset($_GET['dumppost'])) echo $this->dom->saveHTML();
 		}
