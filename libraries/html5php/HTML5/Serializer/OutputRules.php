@@ -167,9 +167,7 @@ class OutputRules implements RulesInterface
 
         $this->outputMode = static::IM_IN_HTML;
         $this->out = $output;
-
-        // If HHVM, see https://github.com/facebook/hhvm/issues/2727
-        $this->hasHTML5 = defined('ENT_HTML5') && !defined('HHVM_VERSION');
+        $this->hasHTML5 = defined('ENT_HTML5');
     }
 
     public function addRule(array $rule)
@@ -180,6 +178,13 @@ class OutputRules implements RulesInterface
     public function setTraverser(Traverser $traverser)
     {
         $this->traverser = $traverser;
+
+        return $this;
+    }
+
+    public function unsetTraverser()
+    {
+        $this->traverser = null;
 
         return $this;
     }
@@ -201,6 +206,9 @@ class OutputRules implements RulesInterface
         $this->nl();
     }
 
+    /**
+     * @param \DOMElement $ele
+     */
     public function element($ele)
     {
         $name = $ele->tagName;
@@ -222,6 +230,9 @@ class OutputRules implements RulesInterface
         }
 
         $this->openTag($ele);
+        // The tag is already self-closed (`<svg />` or `<math />`) in `openTag` if there are no child nodes.
+        $handledAsVoidTag = $this->outputMode !== static::IM_IN_HTML && !$ele->hasChildNodes();
+
         if (Elements::isA($name, Elements::TEXT_RAW)) {
             foreach ($ele->childNodes as $child) {
                 if ($child instanceof \DOMCharacterData) {
@@ -243,7 +254,7 @@ class OutputRules implements RulesInterface
         }
 
         // If not unary, add a closing tag.
-        if (!Elements::isA($name, Elements::VOID_TAG)) {
+        if (!$handledAsVoidTag && !Elements::isA($name, Elements::VOID_TAG)) {
             $this->closeTag($ele);
         }
     }
