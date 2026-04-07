@@ -8,8 +8,12 @@
   <head>
     <title><xsl:value-of select="$title"/> (full-text feed)</title>
     <link rel="stylesheet" type="text/css" href="css/feed.css" />
+    <script language="javascript" src="js/xsl-workaround.js"></script>
   </head>
   <body>
+    <div id="cometestme">
+       <xsl:text disable-output-escaping="yes">&amp;amp;</xsl:text>
+    </div>
     <div id="explanation" dir="auto">
       <h1><xsl:value-of select="$title"/> <span class="small"> (full-text feed)</span></h1>
       <p>You are viewing an auto-generated full-text <acronym title="Really Simple Syndication">RSS</acronym> feed. RSS feeds allow you to stay up to date with the latest news and features you want from websites.<br /><a href="{$subscribe}">Subscribe to this feed.</a></p>
@@ -21,7 +25,7 @@
       <xsl:for-each select="rss/channel/item">
       <div class="article">
         <li><a href="{link}" rel="bookmark"><xsl:value-of disable-output-escaping="yes" select="title"/></a>
-			<div>
+			<div name="decodeme">
 			<xsl:choose>
 				<xsl:when test="content:encoded"><xsl:value-of disable-output-escaping="yes" select="content:encoded" /></xsl:when>
 				<xsl:when test="description"><xsl:value-of disable-output-escaping="yes" select="description" /></xsl:when>

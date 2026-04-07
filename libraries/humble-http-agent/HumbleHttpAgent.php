@@ -7,8 +7,8 @@
  * For environments which do not have these options, it reverts to standard sequential 
  * requests (using file_get_contents())
  * 
- * @version 1.8
- * @date 2017-09-25
+ * @version 1.9
+ * @date 2019-03-28
  * @see http://devel-m6w6.rhcloud.com/mdref/http
  * @author Keyvan Minoukadeh
  * @copyright 2011-2016 Keyvan Minoukadeh
@@ -22,8 +22,8 @@ class HumbleHttpAgent
 	const METHOD_FILE_GET_CONTENTS = 4;
 	//const UA_BROWSER = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:2.0.1) Gecko/20100101 Firefox/4.0.1';
 	// popular user agents from https://techblog.willshouse.com/2012/01/03/most-common-user-agents/
-	const UA_BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36';
-	const UA_PHP = 'PHP/7.1';
+	const UA_BROWSER = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:65.0) Gecko/20100101 Firefox/65.0';
+	const UA_PHP = 'PHP/7.2';
 	const REF_GOOGLE = 'http://www.google.co.uk/url?sa=t&source=web&cd=1';
 	
 	protected $requests = array();
@@ -69,7 +69,7 @@ class HumbleHttpAgent
 		if (in_array($method, array(1,2,4))) {
 			$this->method = $method;
 		} else {
-			if (class_exists('http\Client\Request')) {
+			if (class_exists('http\Client\Request') && count(http\Client::getAvailableDrivers()) > 0) {
 				$this->method = self::METHOD_REQUEST_POOL;
 			} elseif (function_exists('curl_multi_init')) {
 				$this->method = self::METHOD_CURL_MULTI;
@@ -214,7 +214,11 @@ class HumbleHttpAgent
 		}
 
 		// <meta HTTP-EQUIV="REFRESH" content="0; url=http://www.bernama.com/bernama/v6/newsindex.php?id=943513">
-		if (!preg_match('!<meta http-equiv=["\']?refresh["\']? content=["\']?[0-9];\s*url=["\']?([^"\'>]+)["\']?!i', $html, $match)) {
+		// Google RSS alerts:
+		// <META content="0;URL=https://www.techradar.com/news/walmart-tipped-to-be-building-budget-android-tablets-of-its-own" http-equiv="refresh"></META>
+		$regex1 = '!<meta http-equiv=["\']?refresh["\']? content=["\']?[0-9];\s*url=["\']?([^"\'>]+)["\']?!i';
+		$regex2 = '!<meta content=["\']?[0-9];\s*url=["\']?([^"\'>]+)["\']? http-equiv=["\']?refresh["\']?!i';
+		if (!preg_match($regex1, $html, $match) && !preg_match($regex2, $html, $match)) {
 			return false;
 		}
 		$redirect_url = $match[1];

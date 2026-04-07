@@ -87,10 +87,10 @@ class SiteConfig
 	// Single-page link in feed? - same as above, but patterns applied to item description HTML taken from feed
 	public $single_page_link_in_feed = array();
 	
-	// Which parser to use for turning raw HTML into a DOMDocument (either 'libxml' or 'html5lib')
+	// Which parser to use for turning raw HTML into a DOMDocument (either 'libxml' or 'html5php')
 	// string or null if undeclared
 	public $parser = null;
-	protected $default_parser = 'libxml'; // used if undeclared
+	protected $default_parser = 'html5php'; // used if undeclared
 	
 	// Insert detected image (currently only og:image) into beginning of extracted article
 	// Only does this if extracted article contains no images

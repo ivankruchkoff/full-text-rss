@@ -1,10 +1,10 @@
 <?php
 // Full-Text RSS: Create Full-Text Feeds
 // Author: Keyvan Minoukadeh
-// Copyright (c) 2017 Keyvan Minoukadeh
+// Copyright (c) 2018 Keyvan Minoukadeh
 // License: AGPLv3
-// Version: 3.8
-// Date: 2017-09-25
+// Version: 3.9.5
+// Date: 2018-03-28
 // More info: http://fivefilters.org/content-only/
 // Help: http://help.fivefilters.org
 
@@ -70,6 +70,8 @@ function autoload($class_name) {
 		'Masterminds\HTML5' => 'html5php/HTML5.php',		
 		// htmLawed - used if XSS filter is enabled (xss_filter)
 		'htmLawed' => 'htmLawed/htmLawed.php',
+		// html2text
+		'Html2Text\Html2Text' => 'html2text/Html2Text.php',
 		// Disable SimplePie sanitization
 		'DisableSimplePieSanitize' => 'DisableSimplePieSanitize.php'
 	);
@@ -316,6 +318,25 @@ if ($options->favour_effective_url == 'user') {
 }
 
 ///////////////////////////////////////////////
+// Text output?
+///////////////////////////////////////////////
+$text_output = false;
+$text_width = 70;
+if ($options->content === 'user') {
+	if (isset($_REQUEST['content']) && preg_match('!^text([0-9]*)$!', $_REQUEST['content'], $match)) {
+		$text_output = true;
+		if ($match[1] !== '') {
+			$text_width = (int)$match[1];
+			if ($text_width !== 0 && ($text_width < 20 || $text_width > 1000)) {
+				die('Text wrap can be off (0) or between 20 and 1000 characters.');
+			}
+		}
+	} else {
+		$text_output = false;
+	}
+}
+
+///////////////////////////////////////////////
 // Include full content in output?
 ///////////////////////////////////////////////
 if ($options->content === 'user') {
@@ -323,17 +344,6 @@ if ($options->content === 'user') {
 		$options->content = false;
 	} else {
 		$options->content = true;
-	}
-}
-
-///////////////////////////////////////////////
-// HTML5 output?
-///////////////////////////////////////////////
-if ($options->html5_output === 'user') {
-	if (isset($_REQUEST['content']) && $_REQUEST['content'] === '1') {
-		$options->html5_output = false;
-	} else {
-		$options->html5_output = true;
 	}
 }
 
@@ -413,9 +423,9 @@ if ($format =='json' && isset($_REQUEST['callback'])) {
 ///////////////////////////////////////////////
 // Override default HTML parser?
 ///////////////////////////////////////////////
-$parser = null;
+$parser_req = null;
 if ($options->allow_parser_override && isset($_REQUEST['parser']) && in_array($_REQUEST['parser'], $options->allowed_parsers)) {
-	$parser = $_REQUEST['parser'];
+	$parser_req = $_REQUEST['parser'];
 }
 
 ///////////////////////////////////////////////
@@ -472,7 +482,7 @@ if (isset($_REQUEST['inputhtml']) && _FF_FTR_MODE == 'simple') {
 //////////////////////////////////
 if ($options->caching) {
 	debug('Caching is enabled...');
-	$cache_id = md5($max.$url.(int)$valid_key.$accept.$links.$images.(int)$favour_feed_titles.(int)$options->content.(int)$options->html5_output.(int)$options->summary.(int)$xss_filter.(int)$favour_effective_url.(int)$exclude_on_fail.$format.$detect_language.$parser.$user_submitted_config._FF_FTR_MODE);
+	$cache_id = md5($max.$url.(int)$valid_key.$accept.$links.$images.(int)$favour_feed_titles.(int)$options->content.(int)$options->summary.(int)$xss_filter.(int)$favour_effective_url.(int)$exclude_on_fail.$format.$detect_language.$parser_req.$text_output.$text_width.$user_submitted_config._FF_FTR_MODE);
 	$check_cache = true;
 	if ($options->apc && $options->smart_cache) {
 		apc_add("cache.$cache_id", 0, $options->cache_time*60);
@@ -556,7 +566,9 @@ SiteConfig::$debug = $debug_mode;
 SiteConfig::use_apc($options->apc);
 $extractor->fingerprints = $options->fingerprints;
 $extractor->allowedParsers = $options->allowed_parsers;
-$extractor->parserOverride = $parser;
+$extractor->defaultParser = $options->default_parser;
+$extractor->allowParserOverride = $options->allow_parser_override;
+$extractor->parserOverride = $parser_req;
 if (!$images) $extractor->stripImages = true;
 if ($options->user_submitted_config && $user_submitted_config) {
 	$extractor->setUserSubmittedConfig($user_submitted_config);
@@ -709,7 +721,7 @@ foreach ($items as $key => $item) {
 	$extracted_title = '';
 	$feed_item_title = $item->get_title();
 	if ($feed_item_title !== null) {
-		$feed_item_title = strip_tags(htmlspecialchars_decode($feed_item_title));
+		$feed_item_title = strip_tags(htmlspecialchars_decode($feed_item_title, ENT_QUOTES | ENT_HTML401));
 	}
 	$newitem = $output->createNewItem();
 	$newitem->setTitle($feed_item_title);
@@ -997,9 +1009,23 @@ foreach ($items as $key => $item) {
 		unset($_paras, $_para);
 		$summary = get_excerpt($summary);
 		$newitem->setDescription($summary);
-		if ($options->content) $newitem->setElement('content:encoded', $html);
+		if ($options->content) {
+			if ($text_output) {
+				$html = new \Html2Text\Html2Text($html, array('width'=>$text_width));
+				$newitem->setElement('content:encoded', $html->getText());
+			} else {
+				$newitem->setElement('content:encoded', $html);
+			}
+		}
 	} else {
-		if ($options->content) $newitem->setDescription($html);
+		if ($options->content) {
+			if ($text_output) {
+				$html = new \Html2Text\Html2Text($html, array('width'=>$text_width));
+				$newitem->setDescription($html->getText());
+			} else {
+				$newitem->setDescription($html);
+			}
+		}
 	}
 	
 	// set date
@@ -1317,7 +1343,17 @@ function get_excerpt($text, $num_words=55, $more=null) {
 
 function url_allowed($url) {
 	global $options;
-	if (!empty($options->allowed_urls)) {
+	if (!empty($options->allowed_hosts)) {
+		$host = parse_url($url, PHP_URL_HOST);
+		$allowed = false;
+		foreach ($options->allowed_hosts as $allowhost) {
+			if (strtolower($allowhost) == strtolower($host)) {
+				$allowed = true;
+				break;
+			}
+		}
+		if (!$allowed) return false;
+	} elseif (!empty($options->allowed_urls)) {
 		$allowed = false;
 		foreach ($options->allowed_urls as $allowurl) {
 			if (stristr($url, $allowurl) !== false) {
@@ -1408,6 +1444,8 @@ function convert_to_utf8($html, $header=null) {
 		}
 		if (!$encoding) {
 			debug('No character encoding found, so treating as UTF-8');
+			// TODO: might need adding <meta charset="utf-8"> into HTML
+			// for parsers, for the HTML to be treated as UTF-8
 			$encoding = 'utf-8';
 		} else {
 			debug('Character encoding: '.$encoding);
@@ -1425,28 +1463,65 @@ function make_absolute($base, $elem) {
 	// remove '//' in URL path (used to prevent URLs from resolving properly)
 	// TODO: check if this is still the case
 	if (isset($base->path)) $base->path = preg_replace('!//+!', '/', $base->path);
-	foreach(array('a'=>'href', 'img'=>'src') as $tag => $attr) {
+	foreach(array('a'=>array('href'), 'img'=>array('src', 'srcset'), 'source'=>array('srcset')) as $tag => $attrs) {
 		$elems = $elem->getElementsByTagName($tag);
 		for ($i = $elems->length-1; $i >= 0; $i--) {
 			$e = $elems->item($i);
 			//$e->parentNode->replaceChild($articleContent->ownerDocument->createTextNode($e->textContent), $e);
-			make_absolute_attr($base, $e, $attr);
+			foreach ($attrs as $attr) {
+				make_absolute_attr($base, $e, $attr);
+			}
 		}
-		if (strtolower($elem->tagName) == $tag) make_absolute_attr($base, $elem, $attr);
-	}
-}
-function make_absolute_attr($base, $e, $attr) {
-	if ($e->hasAttribute($attr)) {
-		// Trim leading and trailing white space. I don't really like this but 
-		// unfortunately it does appear on some sites. e.g.  <img src=" /path/to/image.jpg" />
-		$url = trim(str_replace('%20', ' ', $e->getAttribute($attr)));
-		$url = str_replace(' ', '%20', $url);
-		if (!preg_match('!https?://!i', $url)) {
-			if ($absolute = SimplePie_IRI::absolutize($base, $url)) {
-				$e->setAttribute($attr, $absolute->get_uri());
+		if (strtolower($elem->tagName) == $tag) {
+			foreach ($attrs as $attr) {
+				make_absolute_attr($base, $elem, $attr);
 			}
 		}
 	}
+}
+// $base = SimplePie_IRI object
+// $e = DOMElement object
+// $att = string (attribute name)
+function make_absolute_attr($base, $e, $attr) {
+	if ($e->hasAttribute($attr)) {
+		if ($attr === 'srcset') {
+			$srcset_abs = make_absolute_srcset($base->get_uri(), $e->getAttribute($attr));
+			$e->setAttribute($attr, $srcset_abs);
+		} else {
+			// Trim leading and trailing white space. I don't really like this but 
+			// unfortunately it does appear on some sites. e.g.  <img src=" /path/to/image.jpg" />
+			$url = trim(str_replace('%20', ' ', $e->getAttribute($attr)));
+			$url = str_replace(' ', '%20', $url);
+			if (!preg_match('!https?://!i', $url)) {
+				if ($absolute = SimplePie_IRI::absolutize($base, $url)) {
+					$e->setAttribute($attr, $absolute->get_uri());
+				}
+			}
+		}
+	}
+}
+// takes a srcset attribute value like 
+// "image/ptco3gn6l9kgd.jpg 2x, image/e,f,fl,q_80,w_800/kgd.jpg 3x"
+// return it with relative URLs rewritten against base URL
+function make_absolute_srcset($base, $str) {
+	$str = trim($str);
+	if ($str === '') return $str;
+	$srcset = array();
+	// test on https://www.regexpal.com
+	if (!preg_match_all('!\s*(\S+)(?:\s+[\d\.]+[wx])?,?!', $str, $matches)) {
+		return $str;
+	}
+	$images = $matches[0];
+	foreach ($images as $image) {
+		$image = trim($image);
+		$image = trim($image, ',');
+		if ($image === '') continue;
+		$parts = preg_split('!\s+!', $image);
+		// url
+		$parts[0] = make_absolute_str($base, $parts[0]);
+		$srcset[] = implode(' ', $parts);
+	}
+	return implode(', ', $srcset);
 }
 function make_absolute_str($base, $url) {
 	$base = new SimplePie_IRI($base);
@@ -1463,30 +1538,34 @@ function make_absolute_str($base, $url) {
 	}
 }
 function make_html($dom, $inner=false) {
-	global $options;
+	global $options, $extractor;
 	static $html5 = null;
-	if ($options->html5_output) {
-		if ($html5 === null) {
-			$html5 = new Masterminds\HTML5(array('disable_html_ns' => true));
-		}
-		if (!$inner) {
-			return $html5->saveHTML($dom);
-		} else {
-			$_inner = '';
-			if ($dom->hasChildNodes()) {
-				foreach ($dom->childNodes as $child) {
-					$_inner .= $html5->saveHTML($child);
-				}
-			}
-			return $_inner;
-		}
+	$html = '';
+	if ($html5 === null) {
+		$html5 = new Masterminds\HTML5(array('disable_html_ns' => true));
+	}
+	if (!$inner) {
+		$html = $html5->saveHTML($dom);
 	} else {
-		if (!$inner) {
-			return $dom->ownerDocument->saveXML($dom);
-		} else {
-			return $dom->innerHTML;
+		if ($dom->hasChildNodes()) {
+			foreach ($dom->childNodes as $child) {
+				$html .= $html5->saveHTML($child);
+			}
 		}
 	}
+	/* old libxml HTML output
+	if (!$inner) {
+		$html = $dom->ownerDocument->saveXML($dom);
+	} else {
+		$html = $dom->innerHTML;
+	}
+	*/
+	if ($extractor->getParser() === 'gumbo') {
+		// Gumbo encoding issue
+		// https://github.com/layershifter/gumbo-php/issues/6
+		$html = str_replace('&amp;', '&', $html);
+	}
+	return $html;
 }
 // returns single page response, or false if not found
 function get_single_page($item, $html, $url) {

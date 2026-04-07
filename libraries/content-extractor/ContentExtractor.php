@@ -5,10 +5,10 @@
  * Uses patterns specified in site config files and auto detection (hNews/PHP Readability) 
  * to extract content from HTML files.
  * 
- * @version 1.4
- * @date 2017-09-25
+ * @version 1.5
+ * @date 2019-03-26
  * @author Keyvan Minoukadeh
- * @copyright 2017 Keyvan Minoukadeh
+ * @copyright 2019 Keyvan Minoukadeh
  * @license http://www.gnu.org/licenses/agpl-3.0.html AGPL v3
  */
 
@@ -44,9 +44,11 @@ class ContentExtractor
 	protected $nextPageUrl;
 	protected $opengraph = array();
 	protected $twitterCard = array();
-	public $allowedParsers = array('libxml', 'html5php');
-	public $defaultParser = 'libxml';
+	public $allowedParsers = array('libxml', 'html5php', 'gumbo');
+	public $defaultParser = 'gumbo'; // must be in $allowedParsers (html5php will be used if gumbo not available)
+	public $allowParserOverride = false;
 	public $parserOverride = null;
+	public $selectedParser = null;
 	public $fingerprints = array();
 	public $stripImages = false;
 	public $readability;
@@ -166,24 +168,25 @@ class ContentExtractor
 		}
 		
 		// load and parse html
-		if ($this->parserOverride) {
+		$_parser = $this->defaultParser;
+		if ($this->allowParserOverride && $this->parserOverride) {
 			// from querystring: &parser=xxx
 			$_parser = $this->parserOverride;
-		} else {
+		} elseif ($this->allowParserOverride && ($this->config->parser($use_default=false) !== null)) {
 			// from site config file: parser: xxx
-			$_parser = $this->config->parser();
+			$_parser = $this->config->parser($use_default=false);
 		}
-		// for backword compatibility...
+		// for backword compatibility treat html5lib as html5php
 		if ($_parser == 'html5lib') $_parser = 'html5php';
-		if (!in_array($_parser, $this->allowedParsers)) {
-			$this->debug("HTML parser $_parser not listed, using ".$this->defaultParser." instead");
+		if (($_parser !== $this->defaultParser) && !in_array($_parser, $this->allowedParsers)) {
+			$this->debug("HTML parser $_parser not allowed, using ".$this->defaultParser." instead");
 			$_parser = $this->defaultParser;
 		}
-		// Full-Text RSS 3.7...
-		if (class_exists('Layershifter\Gumbo\Parser')) {
-			$this->debug("Gumbo PHP extension will be used for HTML parsing");
-			$_parser = 'gumbo'; // fast HTML5 parser
+		if ($_parser === 'gumbo' && !class_exists('Layershifter\Gumbo\Parser')) {
+			$this->debug("Gumbo PHP extension not available on server, using HTML5-PHP instead");
+			$_parser = 'html5php';
 		}
+		$this->selectedParser = $_parser;
 
 		// use tidy (if it exists)?
 		// This fixes problems with some sites which would otherwise
@@ -444,9 +447,11 @@ class ContentExtractor
 			}
 		}
 
+
 		// strip img srcset/sizes attributes with relative URIs (src should be present and will be absolutised)
-		// TODO: absolutize srcet values rather than removing them
 		// To remove srcset from all image elements, site config files can contain: strip: //img/@srcset
+		// 3.9.5: absolutizing srcet values in makefulltextfeed.php rather than removing them here
+		/*
 		$elems = $xpath->query("//img[@srcset and not(contains(@srcset, '//'))]", $this->readability->dom);
 		// check for matches
 		if ($elems && $elems->length > 0) {
@@ -458,6 +463,7 @@ class ContentExtractor
 				}
 			}
 		}
+		*/
 
 		// try to get body
 		foreach ($this->config->body as $pattern) {
@@ -856,18 +862,35 @@ class ContentExtractor
 			// now let's deal with another lazy load technique. Example:
 			// <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="lazyload" 
 			// data-src="http://i68.tinypic.com/2jabu8.jpg" alt="Image and video hosting by TinyPic" border="0" />
-			$elems = @$xpath->query(".//img[@data-src and (contains(@src, 'data:image') or contains(@src, '.gif'))]", $this->body);
+			// or
+			// <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="lazyload 
+			// data-srcset="https://i.kinja-img.com/gawker-media/image/upload/s--wKo_z9sU--/c_scale,f_auto,fl_progressive,q_80,w_800/aoafajrptco3gn6l9kgd.jpg 2x, https://i.kinja-img.com/gawker-media/image/upload/s--wKo_z9sU--/c_scale,f_auto,fl_progressive,q_80,w_800/aoafajrptco3gn6l9kgd.jpg 3x" data-width="5301">
+			$elems = @$xpath->query(".//img[(@data-src or @data-srcset) and (contains(@src, 'data:image') or contains(@src, '.gif'))]", $this->body);
 			for ($i = $elems->length-1; $i >= 0; $i--) {
 				$e = $elems->item($i);
-				$e->setAttribute('src', $e->getAttribute('data-src'));
-				$e->removeAttribute('data-src');
+				if ($e->hasAttribute('data-src')) {
+					$e->setAttribute('src', $e->getAttribute('data-src'));
+					$e->removeAttribute('data-src');
+				}
+				if ($e->hasAttribute('data-srcset')) {
+					$e->setAttribute('srcset', $e->getAttribute('data-srcset'));
+					$e->removeAttribute('data-srcset');
+				}
+			}
+			// now let's deal with another lazy load technique. Example:
+			// <source data-srcset="https://i.kinja-img.com/gawker-media/image/upload/s--wKo_z9sU--/c_scale,f_auto,fl_progressive,q_80,w_800/aoafajrptco3gn6l9kgd.jpg, https://i.kinja-img.com/gawker-media/image/upload/s--mE21NVbj--/c_scale,dpr_2.0,f_auto,fl_progressive,q_80,w_800/aoafajrptco3gn6l9kgd.jpg 2x, https://i.kinja-img.com/gawker-media/image/upload/s--V1_DyDGT--/c_scale,dpr_3.0,f_auto,fl_progressive,q_80,w_800/aoafajrptco3gn6l9kgd.jpg 3x">
+			$elems = @$xpath->query(".//source[@data-srcset and (not(@srcset) or contains(@srcset, 'data:image'))]", $this->body);
+			for ($i = $elems->length-1; $i >= 0; $i--) {
+				$e = $elems->item($i);
+				$e->setAttribute('srcset', $e->getAttribute('data-srcset'));
+				$e->removeAttribute('data-srcset');
 			}
 			// Strip images?
 			if ($this->stripImages && $this->body->hasChildNodes()) {
-				$elems = @$xpath->query("//figure | //img | //figcaption", $this->body);
+				$elems = @$xpath->query("//picture | //figure | //img | //figcaption", $this->body);
 				// check for matches
 				if ($elems && $elems->length > 0) {
-					$this->debug('Stripping images: '.$elems->length.' img/figure/figcaption elements');
+					$this->debug('Stripping images: '.$elems->length.' img/picture/figure/figcaption elements');
 					for ($i=$elems->length-1; $i >= 0; $i--) {
 						@$elems->item($i)->parentNode->removeChild($elems->item($i));
 					}
@@ -944,6 +967,10 @@ class ContentExtractor
 	
 	public function getSiteConfig() {
 		return $this->config;
+	}
+
+	public function getParser() {
+		return $this->selectedParser;
 	}
 	
 	public function getNextPageUrl() {

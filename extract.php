@@ -1,12 +1,12 @@
 <?php
 // Full-Text RSS: Simple extraction - results in JSON
 // Author: Keyvan Minoukadeh
-// Copyright (c) 2014 Keyvan Minoukadeh
+// Copyright (c) 2019 Keyvan Minoukadeh
 // License: AGPLv3
-// Version: 3.3
-// Date: 2014-05-07
-// More info: http://fivefilters.org/content-only/
-// Help: http://help.fivefilters.org
+// Version: 3.9.5
+// Date: 2019-03-16
+// More info: https://fivefilters.org/content-only/
+// Help: https://help.fivefilters.org
 
 /*
 This program is free software: you can redistribute it and/or modify
@@ -57,10 +57,10 @@ $_POST['lang'] = '2';
 // so we're commeting this out from FTR 3.7
 //$_POST['exc'] = '1';
 // Enable XSS filtering (unless explicitly disabled)
-if (isset($_POST['xss']) && $_POST['xss'] !== '0') {
-	$_POST['xss'] = '1';
-} elseif (isset($_GET['xss']) && $_GET['xss'] !== '0') {
-	$_GET['xss'] = '1';
+if (isset($_POST['xss']) && $_POST['xss'] === '0') {
+    $_POST['xss'] = '0';
+} elseif (isset($_GET['xss']) && $_GET['xss'] === '0') {
+    $_GET['xss'] = '0';
 } else {
 	$_POST['xss'] = '1';
 }

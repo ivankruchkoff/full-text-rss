@@ -1,8 +1,10 @@
-# Puppet file intended to install server componenets for FiveFilters.org web services.
-# This file should only be run once when setting up a new server to run Full-Text RSS.
-# See http://help.fivefilters.org/customer/portal/articles/1143210-hosting for more information.
+# Puppet file intended to install server componenets for FiveFilters.org web services
 # This file is intended for base images of:
-# Ubuntu 16.04
+# Ubuntu 18.04
+# On a *new* Ubuntu 18.04 server instance (Hetzner Cloud/Linode/Digital Ocean, etc.):
+# > apt-get update
+# > apt-get install puppet
+# > puppet apply ubuntu-18.04.pp
 
 Exec { path => "/bin:/usr/bin:/usr/local/bin" }
 
@@ -71,9 +73,9 @@ class apache {
         ServerAdmin webmaster@localhost
         DocumentRoot /var/www/html
 
-        ErrorLog ${APACHE_LOG_DIR}/error.log
+        ErrorLog /var/log/apache2/error.log
         CustomLog /dev/null combined
-        #CustomLog ${APACHE_LOG_DIR}/access.log combined
+        #CustomLog /var/log/apache2/access.log combined
         
 				KeepAliveTimeout 2
 				MaxKeepAliveRequests 10
@@ -112,34 +114,37 @@ class apache {
 }
 
 class php {
-	package { "php7.0": ensure => latest }
+	package { "php7.2": ensure => latest }
+    #package { "php-apcu": ensure => latest }
+    #package { "php-apcu-bc": ensure => latest }
 	#package { "php-apc": ensure => latest }
-	package { "libapache2-mod-php7.0": ensure => latest }
-	package { "php7.0-cli": ensure => latest }
-	package { "php7.0-tidy": ensure => latest }
-	package { "php7.0-curl": ensure => latest }
+	package { "libapache2-mod-php": ensure => latest }
+	package { "php7.2-cli": ensure => latest }
+	package { "php7.2-tidy": ensure => latest }
+	package { "php7.2-curl": ensure => latest }
 	#package { "libcurl4-gnutls-dev": ensure => latest }
 	package { "libcurl4-openssl-dev": ensure => latest }
 	package { "libpcre3-dev": ensure => latest }
 	package { "make": ensure=>latest }
 	package { "php-pear": ensure => latest }
-	package { "php7.0-dev": ensure => latest }
-	package { "php7.0-intl": ensure => latest }
-	package { "php7.0-gd": ensure => latest }
-	package { "php7.0-mbstring": ensure => latest }
-	package { "php-imagick": ensure => latest }
-	package { "php7.0-json": ensure => latest }
+	package { "php7.2-dev": ensure => latest }
+	package { "php7.2-intl": ensure => latest }
+	package { "php7.2-gd": ensure => latest }
+	package { "php7.2-mbstring": ensure => latest }
+	package { "php7.2-imagick": ensure => latest }
+	package { "php7.2-json": ensure => latest }
 	#package { "php-http": ensure => latest }
 	package { "php-raphf": ensure => latest }
 	package { "php-propro": ensure => latest }
-	package { "php7.0-zip": ensure => latest }
+	package { "php-zip": ensure => latest }
 	# for gumbo-php
 	package { "libgumbo1": ensure => latest }
 	package { "libgumbo-dev": ensure => latest }
 	package { "libxml2": ensure => latest }
 	package { "libxml2-dev": ensure => latest }
 
-	file { "/etc/php/7.0/mods-available/fivefilters-php.ini":
+
+	file { "/etc/php/7.2/mods-available/fivefilters-php.ini":
 		ensure => present,
 		content => "engine = On
 		expose_php = Off
@@ -152,7 +157,7 @@ class php {
 		default_socket_timeout = 120
 		file_uploads = Off
 		date.timezoe = 'UTC'",
-		require => Package["php7.0"],
+		require => Package["php7.2"],
 		before => Exec["enable-fivefilters-php"],
 	}
 	exec { "enable-fivefilters-php":
@@ -162,7 +167,7 @@ class php {
 
 class php_pecl_http {
   # Important: this file needs to be in place before we install the HTTP extension
-	file { "/etc/php/7.0/mods-available/http.ini":
+	file { "/etc/php/7.2/mods-available/http.ini":
 		ensure => present,
 		#owner => root, group => root, mode => 444,
 		content => "; priority=25
@@ -191,7 +196,7 @@ extension=http.so",
 	exec { "install-http-pecl":
 		# For some reason this command doesn't return a success code, even though 
 		# it appears to succeed. So we use || /bin/true
-		command => "sudo pecl install channel://pecl.php.net/pecl_http-3.1.0.tgz || /bin/true",
+		command => "sudo pecl install channel://pecl.php.net/pecl_http-3.2.0.tgz || /bin/true",
 		#creates => "/tmp/needed/directory",
 		require => Exec["enable-http"]
 	}
@@ -199,12 +204,12 @@ extension=http.so",
 
 class php_pecl_apcu {
 	exec { "install-apcu-pecl":
-		command => "sudo pecl install channel://pecl.php.net/APCu-5.1.8",
+		command => "sudo pecl install channel://pecl.php.net/APCu-5.1.17",
 		#creates => "/tmp/needed/directory",
 		require => Class["php"]
 	}
 
-	file { "/etc/php/7.0/mods-available/apcu.ini":
+	file { "/etc/php/7.2/mods-available/apcu.ini":
 		ensure => present,
 		#owner => root, group => root, mode => 444,
 		content => "extension=apcu.so",
@@ -219,6 +224,7 @@ class php_pecl_apcu {
 
 class php_gumbo {
 	# see https://github.com/layershifter/gumbo-php
+    # using https://github.com/fivefilters/gumbo-php for better whitespace handling
 	package { "git": ensure => latest }
 	package { "build-essential": ensure => latest }
 	
@@ -230,7 +236,7 @@ class php_gumbo {
 	}
 	
 	exec { "download-gumbo":
-		command => "git clone git://github.com/layershifter/gumbo-php.git /tmp/gumbo",
+		command => "git clone git://github.com/fivefilters/gumbo-php.git /tmp/gumbo",
 		require => [Package["git"], Class["php"]]
 	}
 	
@@ -241,7 +247,7 @@ class php_gumbo {
 		require => Exec["download-gumbo"]
 	}
 
-	file { "/etc/php/7.0/mods-available/gumbo.ini":
+	file { "/etc/php/7.2/mods-available/gumbo.ini":
 		ensure => present,
 		#owner => root, group => root, mode => 444,
 		content => "extension=gumbo.so",
@@ -256,14 +262,15 @@ class php_gumbo {
 	}
 }
 
+
 class php_pecl_apc_bc {
 	exec { "install-apc-bc-pecl":
-		command => "sudo pecl install channel://pecl.php.net/apcu_bc-1.0.3",
+		command => "sudo pecl install channel://pecl.php.net/apcu_bc-1.0.5",
 		#creates => "/tmp/needed/directory",
 		require => Class["php_pecl_apcu"]
 	}
 
-	file { "/etc/php/7.0/mods-available/z_apc_bc.ini":
+	file { "/etc/php/7.2/mods-available/z_apc_bc.ini":
 		ensure => present,
 		#owner => root, group => root, mode => 444,
 		content => "extension=apc.so",
@@ -276,13 +283,14 @@ class php_pecl_apc_bc {
 	}
 }
 
+
 class final {
 	exec { "lower-swappiness":
 		command => "echo 'vm.swappiness = 10' >> /etc/sysctl.conf && sudo sysctl -p",
 		provider => "shell"
 	}
 	exec { "enable-php":
-		command => "sudo a2enmod php7.0 && sudo service apache2 restart",
+		command => "sudo a2enmod php7.2 && sudo service apache2 restart",
 		provider => "shell"
 	}
 }

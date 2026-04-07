@@ -2,9 +2,34 @@ FiveFilters.org: Full-Text RSS
 http://fivefilters.org/content-only/
 CHANGELOG
 ------------------------------------
-3.8.2 (unreleased)
- - Removed deprecated PHP 7.2 and 7.3 calls
- 
+3.9.5 (2019-03-28)
+ - Bug fix: Character encoding issues (now using bundled HTML5-PHP parser by default)
+ - Bug fix: RSS preview broken in Firefox (preview stylesheet updated)
+ - Bug fix: Google Alert feeds not producing results (meta refresh handling updated)
+ - Bug fix: srcset relative URLs now rewritten to absolute form (in line with img src)
+ - Bug fix: disable XSS filtering in extract.php when &xss=0
+ - Updated default User-Agent strings used
+ - HTML5-PHP library updated to version 2.6
+ - Updated server setup script (ubuntu-18.04.pp) to use newer versions of PECL HTTP and APCu
+ - Deprecated $options->allowed_urls in favour of $options->allowed_hosts in config.php
+ - Removed deprecated filter_var flags for PHP 7.3 compatibility
+ - Tested with PHP 7.3
+
+3.9.1 (2018-05-10)
+ - Bug fix: Removed deprecated each() calls (caused 'deprecated' PHP warnings in some versions of PHP)
+ - Bug fix in Gumbo PHP parser: Preserve whitespace in <pre> elements wrapping <code> elements (change in ubuntu-18.04.pp affecting those who setup their server with the previous Puppet file, or via our customer Easy Install page)
+ - Replaced ubuntu-16.04.pp Puppet file with ubuntu-18.04.pp
+ - Specify text width in plain text output: &content=text80 will wrap at 80 characters (default is 70)
+
+3.9 (2018-05-06)
+ - Convert extracted HTML content to plain text with &content=text
+ - Bug fix: character encoding issue when using Gumbo as parser
+ - Removed deprecated PHP 7.2 calls (thanks Florian)
+ - Added a few basic Codeception tests (see tests folder)
+ - Added RoboFile.php to allow use from the command line (with Robo Task Runner)
+ - Removed $options->html5_output from config file (it's now always used)
+ - Other fixes/improvements
+
 3.8.1 (2017-10-31)
  - Bug fix: Systems with old ICU library produced an idn_to_ascii() error
  - Compatibility test file updated to check for DOM extension

@@ -272,8 +272,8 @@ if (!defined('_FF_FTR_INDEX')) {
 
 		<tr>
 			<td>content</td>
-			<td><tt>0</tt>, <tt>1</tt>, <tt>html5</tt> (default)</td>
-			<td>If set to 0, the extracted content will not be included in the output. If set to 1, we'll use regular libxml output - might not be HTML5 compliant.</td>
+			<td><tt>0</tt>, <tt>html5</tt> (default), <tt>text</tt></td>
+			<td>If set to 0, the extracted content will not be included in the output. If set to text, we'll convert the extracted HTML to plain text. By default text output is wrapped at 70 characters. You can use text0 to disable wrapping. Or set wrapping to a value between 20 and 1000 characters, e.g. text80 will wrap at 80 characters.</td>
 		</tr>
 		
 		<tr>
@@ -599,15 +599,16 @@ if (!defined('_FF_FTR_INDEX')) {
 		<li><a href="http://code.google.com/p/rolling-curl/">Rolling Curl</a></li>
 		<li><a href="http://framework.zend.com/manual/en/zend.cache.introduction.html">Zend Cache</a></li>
 		<li><a href="http://pear.php.net/package/Text_LanguageDetect">Text_LanguageDetect</a> or <a href="https://github.com/lstrojny/php-cld">PHP-CLD</a> if available</li>
+		<li><a href="https://github.com/mtibben/html2text">Html2Text</a></li>
 	</ul>
 
 	<h3>System Requirements</h3>
 	
-	<p>PHP 5.3 or above is required. A simple shared web hosting account should work fine, but we recommend a <a href="http://help.fivefilters.org/customer/portal/articles/1143210-hosting">VPS with 1GB RAM</a>.
+	<p>PHP 5.4 or above is required. A simple shared web hosting account should work fine, but we recommend a <a href="http://help.fivefilters.org/customer/portal/articles/1143210-hosting">VPS with 1GB RAM</a>.
 	The code has been tested on Windows and Linux using the Apache web server. If you're a Windows user, you can try it on your own machine using <a href="http://www.uniformserver.com/">Uniform Server</a>. It has also been reported as working under IIS, but we have not tested this ourselves.</p>
 	
 	<h3 id="download">Download</h3>
-	<p>Download from <a href="http://fivefilters.org/content-only/#download">fivefilters.org</a> &mdash; old versions are available in our <a href="http://code.fivefilters.org">code repository</a>.</p>
+	<p>Download from <a href="http://fivefilters.org/content-only/#download">fivefilters.org</a> &mdash; old versions are available in our <a href="https://bitbucket.org/fivefilters/">code repository</a>.</p>
 
 	</div>
 	
@@ -629,7 +630,7 @@ if (!defined('_FF_FTR_INDEX')) {
 	<!-- LICENSE TAB -->
 	<div id="license" class="tab-pane">
 	<p><a href="http://en.wikipedia.org/wiki/Affero_General_Public_License" style="border-bottom: none;"><img src="images/agplv3.png" alt="AGPL logo" /></a></p>
-	<p>Full-Text RSS is licensed under the <a href="http://en.wikipedia.org/wiki/Affero_General_Public_License">AGPL version 3</a> &mdash; more information about why we use this license can be found on <a href="http://fivefilters.org/content-only/http://fivefilters.org/content-only/#license">FiveFilters.org</a></p> 
+	<p>Full-Text RSS is licensed under the <a href="http://en.wikipedia.org/wiki/Affero_General_Public_License">AGPL version 3</a></p> 
 	<p>The software components in this application are licensed as follows...</p>
 	<ul>
 		<li>PHP Readability: <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License v2</a></li>
@@ -640,7 +641,8 @@ if (!defined('_FF_FTR_INDEX')) {
 		<li>Rolling Curl: <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License v2</a></li>
 		<li>HTML5-PHP: <a href="http://opensource.org/licenses/mit-license.php">MIT</a></li>
 		<li>htmLawed: <a href="http://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License">LGPL v3</a></li>
-		<li>Text_LanguageDetect: <a href="http://en.wikipedia.org/wiki/BSD_license">BSD</a></li>		
+		<li>Text_LanguageDetect: <a href="http://en.wikipedia.org/wiki/BSD_license">BSD</a></li>
+		<li>Html2Text: <a href="http://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL v2</a></li>
 	</ul>
 	</div>
 	

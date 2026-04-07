@@ -16,7 +16,7 @@ SimplePie.org. We have kept most of their checks intact as we use SimplePie in o
 http://github.com/simplepie/simplepie/tree/master/compatibility_test/
 */
 
-$app_name = 'Full-Text RSS 3.8';
+$app_name = 'Full-Text RSS 3.9.5';
 
 // Full-Text RSS is not yet compatible with HHVM, that's why we check for it with HHVM_VERSION.
 //$php_ok = (function_exists('version_compare') && version_compare(phpversion(), '5.2.0', '>=') && !defined('HHVM_VERSION'));
@@ -388,15 +388,17 @@ div.chunk {
 			}
 			?>
 			
+			<!--
 			<h4>HTML parser</h4>
-			<p><?php echo $app_name; ?> uses the fast libxml parser (the default PHP parser) but it will automatically make use of Gumbo (a fast HTML5 parser) if the <a href="https://github.com/layershifter/gumbo-php">Gumbo PHP</a> extension is installed. Alternatively, HTML5-PHP (an HTML5 parser written in PHP) can be used by passing &amp;parser=html5 as a parameter. The latter might produce better results than libxml for some sites, but is a little slower.</p>
+			<p><?php echo $app_name; ?> uses HTML5-PHP (an HTML5 parser written in PHP).</p>
 			<?php
 			if ($gumbo_ok) {
 				echo '<p class="highlight"><strong>Gumbo PHP</strong> will be used on this server.</p>';
 			} else {
-				echo '<p class="highlight">libxml will be used by default, unless HTML5 parsing is requested.</p>';
+				echo '<p class="highlight">HTML5-PHP will be used for parsing.</p>';
 			}
 			?>
+			-->
 
 <!--
 			<h4>Language detection</h4>

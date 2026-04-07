@@ -245,6 +245,15 @@ function println($txt) {
 }
 
 function rrmdir($dir) {
+	foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $path) {
+        $path->isDir() && !$path->isLink() ? rmdir($path->getPathname()) : unlink($path->getPathname());
+	}
+	return rmdir($dir);
+	// old code which only removed certain files
+	// we want to remove everything in case there are mistakes in 
+	// github (wrong file ending being committed) which result in the directory not 
+	// getting cleared, breaking updates
+	/*
     foreach(glob($dir . '/{*.txt,*.php,*.com,.*.txt,.*.php,.*.com,.gitattributes,.gitignore,ftr-site-config-master,README.md}', GLOB_BRACE|GLOB_NOSORT) as $file) {
         if(is_dir($file)) {
             rrmdir($file);
@@ -252,5 +261,6 @@ function rrmdir($dir) {
             unlink($file);
 		}
     }
-    return rmdir($dir);
+	return rmdir($dir);
+	*/
 }
