@@ -581,6 +581,8 @@ $http->siteConfigBuilder = $extractor;
 $feed_parse_failure = false;
 $feed_parse_failure_reasons = array();
 $feed_parse_failure_context = array();
+$include_diagnostic_items = isset($_GET['error_items']) && filter_var($_GET['error_items'], FILTER_VALIDATE_BOOLEAN);
+$failed_item_count = 0;
 if ($accept !== 'html') {
 	debug('--------');
 	debug("Attempting to process URL as feed");
@@ -688,7 +690,12 @@ if ($img_url = $feed->get_image_url()) {
 }
 if ($feed_parse_failure) {
 	$output->setTitle('Feed parsing failed');
-	$output->setDescription('Unable to parse source URL as a feed. See item details for diagnostics.');
+	$desc = 'Unable to parse source URL as a feed.';
+	if (!empty($feed_parse_failure_reasons)) {
+		$desc .= ' Reason: '.implode(' | ', $feed_parse_failure_reasons);
+	}
+	$desc .= ' Add error_items=1 to include diagnostic entries in the feed output.';
+	$output->setDescription($desc);
 }
 
 ////////////////////////////////////////////
@@ -746,6 +753,9 @@ foreach ($items as $key => $item) {
 		$newitem->setLink($item->get_permalink());
 	}
 	if ($feed_parse_failure) {
+		if (!$include_diagnostic_items) {
+			continue;
+		}
 		if (trim((string)$feed_item_title) === "") {
 			$newitem->setTitle("Feed parsing failed for source URL");
 		}
@@ -932,9 +942,12 @@ foreach ($items as $key => $item) {
 			$item_failure_reasons = array_values(array_unique(array_filter($item_failure_reasons)));
 			if (_FF_FTR_MODE === 'simple') {
 				$html = '';
-			} else {
+			} elseif ($include_diagnostic_items) {
 				$html = ftr_failure_html('Full-text extraction failed for this item.', $item_failure_reasons, ftr_response_context(isset($response) ? $response : null));
 				$html .= $item->get_description();
+			} else {
+				$failed_item_count++;
+				continue;
 			}
 		} else {
 			$readability->clean($content_block, 'select');
@@ -1200,6 +1213,14 @@ foreach ($items as $key => $item) {
 	$output->addItem($newitem);
 	unset($html);
 	$item_count++;
+}
+
+if (!$include_diagnostic_items && !$feed_parse_failure && $failed_item_count > 0) {
+	$diagnostic_summary = array();
+	$diagnostic_summary[] = trim(strip_tags($feed->get_description()));
+	$diagnostic_summary[] = $failed_item_count.' item(s) skipped due to fetch/extraction failures.';
+	$diagnostic_summary[] = 'Add error_items=1 to include diagnostic entries in the feed output.';
+	$output->setDescription(trim(implode(' ', array_filter($diagnostic_summary))));
 }
 
 // output feed

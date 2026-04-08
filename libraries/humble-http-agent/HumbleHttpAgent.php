@@ -22,8 +22,8 @@ class HumbleHttpAgent
 	const METHOD_FILE_GET_CONTENTS = 4;
 	//const UA_BROWSER = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:2.0.1) Gecko/20100101 Firefox/4.0.1';
 	// popular user agents from https://techblog.willshouse.com/2012/01/03/most-common-user-agents/
-	const UA_BROWSER = 'Mozilla/5.0 (X11; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0';
-	const UA_PHP = self::UA_BROWSER;
+	const UA_BROWSER = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:65.0) Gecko/20100101 Firefox/65.0';
+	const UA_PHP = 'PHP/7.2';
 	const REF_GOOGLE = 'http://www.google.co.uk/url?sa=t&source=web&cd=1';
 	
 	protected $requests = array();
