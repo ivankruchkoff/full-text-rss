@@ -23,6 +23,36 @@
 		$this->version = $version;
 	}
 
+	private function normalizeScalar($value, $default = '')
+	{
+		if ($value === null) {
+			return $default;
+		}
+		if (is_bool($value)) {
+			return $value ? '1' : '0';
+		}
+		if (is_scalar($value)) {
+			return (string) $value;
+		}
+		return $default;
+	}
+
+	private function normalizeAttributes($attributes)
+	{
+		if (!is_array($attributes)) {
+			return null;
+		}
+		$normalized = array();
+		foreach ($attributes as $key => $value) {
+			$key = (string) $key;
+			if ($key === '') {
+				continue;
+			}
+			$normalized[$key] = $this->normalizeScalar($value);
+		}
+		return $normalized;
+	}
+
 	/**
 	* Set element (overwrites existing elements with $elementName)
 	* 
@@ -34,6 +64,10 @@
 	*/
 	public function setElement($elementName, $content, $attributes = null)
 	{
+		$elementName = (string) $elementName;
+		if ($elementName === '') {
+			return;
+		}
 		if (isset($this->elements[$elementName])) {
 			unset($this->elements[$elementName]);
 		}
@@ -51,6 +85,10 @@
 	*/
 	public function addElement($elementName, $content, $attributes = null)
 	{
+		$elementName = (string) $elementName;
+		if ($elementName === '') {
+			return;
+		}
 		$i = 0;
 		if (isset($this->elements[$elementName])) {
 			$i = count($this->elements[$elementName]);
@@ -58,8 +96,8 @@
 			$this->elements[$elementName] = array();
 		}
 		$this->elements[$elementName][$i]['name']       = $elementName;
-		$this->elements[$elementName][$i]['content']    = $content;
-		$this->elements[$elementName][$i]['attributes'] = $attributes;
+		$this->elements[$elementName][$i]['content']    = $this->normalizeScalar($content);
+		$this->elements[$elementName][$i]['attributes'] = $this->normalizeAttributes($attributes);
 	}
 	
 	/**
@@ -127,14 +165,18 @@
 	{
 		if(! is_numeric($date))
 		{
-			$date = strtotime($date);
+			$date = strtotime((string) $date);
 		}
+		if ($date === false || $date === null || $date === '') {
+			$date = time();
+		}
+		$date = (int) $date;
 		
 		if($this->version == ATOM)
 		{
 			$tag    = 'updated';
 			$value  = date(DATE_ATOM, $date);
-		}        
+		}
 		elseif($this->version == RSS2) 
 		{
 			$tag    = 'pubDate';
@@ -158,6 +200,7 @@
 	*/
 	public function setLink($link) 
 	{
+		$link = $this->normalizeScalar($link);
 		if($this->version == RSS2 || $this->version == RSS1)
 		{
 			$this->setElement('link', $link);
@@ -182,7 +225,11 @@
 	*/
 	public function setEncloser($url, $length, $type)
 	{
-		$attributes = array('url'=>$url, 'length'=>$length, 'type'=>$type);
+		$attributes = array(
+			'url'=>$this->normalizeScalar($url),
+			'length'=>$this->normalizeScalar($length),
+			'type'=>$this->normalizeScalar($type)
+		);
 		$this->setElement('enclosure','',$attributes);
 	}
 	

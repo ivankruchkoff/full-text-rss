@@ -50,6 +50,46 @@ define('JSONP', 3);
 		//Tag names to encode in CDATA
 		$this->CDATAEncoding = array('description', 'content:encoded', 'content', 'subtitle', 'summary');
 	}
+
+
+	private function normalizeScalar($value, $default = '')
+	{
+		if ($value === null) {
+			return $default;
+		}
+		if (is_bool($value)) {
+			return $value ? '1' : '0';
+		}
+		if (is_scalar($value)) {
+			return (string) $value;
+		}
+		if (is_object($value) && method_exists($value, '__toString')) {
+			return (string) $value;
+		}
+		return $default;
+	}
+
+	private function normalizeArray($value)
+	{
+		if (!is_array($value)) {
+			return array();
+		}
+		$new = array();
+		foreach ($value as $key => $val) {
+			$key = is_string($key) ? $key : (string) $key;
+			if (is_array($val)) {
+				$new[$key] = $this->normalizeArray($val);
+			} else {
+				$new[$key] = $this->normalizeScalar($val);
+			}
+		}
+		return $new;
+	}
+
+	private function xmlEscape($value)
+	{
+		return htmlspecialchars($this->normalizeScalar($value), ENT_COMPAT | ENT_XML1, 'UTF-8', false);
+	}
 	
 	public function setFormat($format) {
 		$this->version = $format;
@@ -70,7 +110,7 @@ define('JSONP', 3);
 	*/
 	public function setChannelElement($elementName, $content)
 	{
-		$this->channels[$elementName] = $content ;
+		$this->channels[(string) $elementName] = is_array($content) ? $this->normalizeArray($content) : $this->normalizeScalar($content) ;
 	}
 	
 	/**
@@ -358,7 +398,7 @@ define('JSONP', 3);
 		if ($this->version == RSS2)
 		{
 			$out  = '<?xml version="1.0" encoding="utf-8"?>'."\n";
-			if ($this->xsl) $out .= '<?xml-stylesheet type="text/xsl" href="'.htmlspecialchars($this->xsl).'"?>' . PHP_EOL;
+			if ($this->xsl) $out .= '<?xml-stylesheet type="text/xsl" href="'.$this->xmlEscape($this->xsl).'"?>' . PHP_EOL;
 			//$out .= '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/" xmlns:og="http://ogp.me/ns#" xmlns:twitter="https://dev.twitter.com/cards/markup">' . PHP_EOL;
 				$out .= '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">' . PHP_EOL;
 			echo $out;
@@ -405,7 +445,7 @@ define('JSONP', 3);
 				{
 					//$attrText .= " $key=\"".htmlspecialchars($value, ENT_COMPAT, 'UTF-8', false)."\" ";
 					// TODO: replace HTML entities not supported in XML with UTF8 equivalent characters
-					$attrText .= " $key=\"".htmlspecialchars($value, ENT_COMPAT, 'UTF-8')."\" ";
+					$attrText .= " $key=\"".$this->xmlEscape($value)."\" ";
 				}
 			}
 			$nodeText .= "<{$tagName}{$attrText}>";
@@ -421,7 +461,7 @@ define('JSONP', 3);
 				//$nodeText .= (in_array($tagName, $this->CDATAEncoding))? $tagContent : htmlentities($tagContent);
 				//$nodeText .= htmlspecialchars($tagContent, ENT_COMPAT, 'UTF-8', false);
 				// TODO: replace HTML entities not supported in XML with UTF8 equivalent characters
-				$nodeText .= htmlspecialchars($tagContent, ENT_COMPAT, 'UTF-8');
+				$nodeText .= $this->xmlEscape($tagContent);
 			}           
 			//$nodeText .= (in_array($tagName, $this->CDATAEncoding))? "]]></$tagName>" : "</$tagName>";
 			$nodeText .= "</$tagName>";
@@ -473,20 +513,20 @@ define('JSONP', 3);
 			// add hubs
 			foreach ($this->hubs as $hub) {
 				//echo $this->makeNode('link', '', array('rel'=>'hub', 'href'=>$hub, 'xmlns'=>'http://www.w3.org/2005/Atom'));
-				echo '<atom:link rel="hub"  href="'.htmlspecialchars($hub).'" />' . PHP_EOL;
+				echo '<atom:link rel="hub"  href="'.$this->xmlEscape($hub).'" />' . PHP_EOL;
 			}
 			// add self
 			if (isset($this->self)) {
 				//echo $this->makeNode('link', '', array('rel'=>'self', 'href'=>$this->self, 'xmlns'=>'http://www.w3.org/2005/Atom'));
-				echo '<atom:link rel="self" href="'.htmlspecialchars($this->self).'" />' . PHP_EOL;
+				echo '<atom:link rel="self" href="'.$this->xmlEscape($this->self).'" />' . PHP_EOL;
 			}
 			// add alternate
 			if (isset($this->alternate)) {
-				echo '<atom:link rel="alternate" title="'.htmlspecialchars($this->alternate['title']).'" href="'.htmlspecialchars($this->alternate['url']).'" />' . PHP_EOL;
+				echo '<atom:link rel="alternate" title="'.$this->xmlEscape($this->alternate['title'] ?? '').'" href="'.$this->xmlEscape($this->alternate['url'] ?? '').'" />' . PHP_EOL;
 			}
 			// add related
 			if (isset($this->related)) {
-				echo '<atom:link rel="related" title="'.htmlspecialchars($this->related['title']).'" href="'.htmlspecialchars($this->related['url']).'" />' . PHP_EOL;
+				echo '<atom:link rel="related" title="'.$this->xmlEscape($this->related['title'] ?? '').'" href="'.$this->xmlEscape($this->related['url'] ?? '').'" />' . PHP_EOL;
 			}			
 			//Print Items of channel
 			foreach ($this->channels as $key => $value) 
