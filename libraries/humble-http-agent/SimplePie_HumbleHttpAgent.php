@@ -14,6 +14,12 @@
 class SimplePie_HumbleHttpAgent extends SimplePie_File
 {
 	protected static $agent;
+	public static $last_url = null;
+	public static $last_effective_url = null;
+	public static $last_status_code = null;
+	public static $last_headers = null;
+	public static $last_body_sample = null;
+	public static $last_error = null;
 	var $url;
 	var $useragent;
 	var $success = true;
@@ -26,6 +32,12 @@ class SimplePie_HumbleHttpAgent extends SimplePie_File
 
 	public static function set_agent(HumbleHttpAgent $agent) {
 		self::$agent = $agent;
+		self::$last_url = null;
+		self::$last_effective_url = null;
+		self::$last_status_code = null;
+		self::$last_headers = null;
+		self::$last_body_sample = null;
+		self::$last_error = null;
 	}
 	
 	public function __construct($url, $timeout = 10, $redirects = 5, $headers = null, $useragent = null, $force_fsockopen = false) {
@@ -37,6 +49,12 @@ class SimplePie_HumbleHttpAgent extends SimplePie_File
 		}
 		$this->url = $url;
 		$this->useragent = $useragent;
+		self::$last_url = $url;
+		self::$last_effective_url = null;
+		self::$last_status_code = null;
+		self::$last_headers = null;
+		self::$last_body_sample = null;
+		self::$last_error = null;
 		if (preg_match('/^http(s)?:\/\//i', $url))
 		{
 			if (!is_array($headers))
@@ -56,7 +74,12 @@ class SimplePie_HumbleHttpAgent extends SimplePie_File
 			if ($response === false || !isset($response['status_code'])) {
 				$this->error = 'failed to fetch URL';
 				$this->success = false;
+				self::$last_error = $this->error;
 			} else {
+				self::$last_effective_url = isset($response['effective_url']) ? $response['effective_url'] : $url;
+				self::$last_status_code = isset($response['status_code']) ? $response['status_code'] : null;
+				self::$last_headers = isset($response['headers']) ? $response['headers'] : null;
+				self::$last_body_sample = isset($response['body']) ? substr($response['body'], 0, 1000) : null;
 				// The extra lines at the end are there to satisfy SimplePie's HTTP parser.
 				// The class expects a full HTTP message, whereas we're giving it only
 				// headers - the new lines indicate the start of the body.
@@ -73,6 +96,7 @@ class SimplePie_HumbleHttpAgent extends SimplePie_File
 		{
 			$this->error = 'invalid URL';
 			$this->success = false;
+			self::$last_error = $this->error;
 		}
 	}
 }

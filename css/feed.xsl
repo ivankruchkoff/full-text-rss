@@ -11,10 +11,7 @@
     <script language="javascript" src="js/xsl-workaround.js"></script>
   </head>
   <body>
-    <div id="cometestme">
-       <xsl:text disable-output-escaping="yes">&amp;amp;</xsl:text>
-    </div>
-    <div id="explanation" dir="auto">
+<div id="explanation" dir="auto">
       <h1><xsl:value-of select="$title"/> <span class="small"> (full-text feed)</span></h1>
       <p>You are viewing an auto-generated full-text <acronym title="Really Simple Syndication">RSS</acronym> feed. RSS feeds allow you to stay up to date with the latest news and features you want from websites.<br /><a href="{$subscribe}">Subscribe to this feed.</a></p>
       <p>Below is the latest content available from this feed.</p>

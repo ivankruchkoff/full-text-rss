@@ -578,6 +578,9 @@ $http->siteConfigBuilder = $extractor;
 ////////////////////////////////
 // Get RSS/Atom feed
 ////////////////////////////////
+$feed_parse_failure = false;
+$feed_parse_failure_reasons = array();
+$feed_parse_failure_context = array();
 if ($accept !== 'html') {
 	debug('--------');
 	debug("Attempting to process URL as feed");
@@ -602,14 +605,16 @@ if ($accept !== 'html') {
 	$feed->enable_order_by_date(false); // we don't want to do anything to the feed
 	$feed->set_url_replacements(array());
 	// initialise the feed
-	// the @ suppresses notices which on some servers causes a 500 internal server error
-	$result = @$feed->init();
-	//$feed->handle_content_type();
-	//$feed->get_title();
+	$result = $feed->init();
 	if ($result && (!is_array($feed->data) || count($feed->data) == 0)) {
-		die('Sorry, no feed items found');
-	} elseif (!$result && $accept === 'feed') {
-		die('Sorry, couldn\'t parse as feed');
+		$feed_parse_failure = true;
+		$result = false;
+		$feed_parse_failure_reasons[] = 'SimplePie initialized but did not return any usable feed items.';
+	} elseif (!$result) {
+		$feed_parse_failure = true;
+		$feed_parse_failure_reasons = ftr_build_feed_failure_reasons($feed, $url);
+		$feed_parse_failure_context = ftr_build_feed_failure_context($url);
+		debug('Feed parsing failed: '.implode(' | ', $feed_parse_failure_reasons));
 	}
 	// from now on, we'll identify ourselves as a browser
 	$http->userAgentDefault = HumbleHttpAgent::UA_BROWSER;
@@ -621,9 +626,13 @@ if ($accept !== 'html') {
 // single-item feeds.
 ////////////////////////////////////////////////////////////////////////////////
 $isDummyFeed = false;
-if ($accept === 'html' || !$result) {
+if ($accept === 'html' || ($accept === 'auto' && !$result) || ($accept === 'feed' && !$result)) {
 	debug('--------');
-	debug("Constructing a single-item feed from URL");
+	if ($feed_parse_failure) {
+		debug("Constructing a diagnostic single-item feed because feed parsing failed");
+	} else {
+		debug("Constructing a single-item feed from URL");
+	}
 	$isDummyFeed = true;
 	unset($feed, $result);
 	// create single item dummy feed object
@@ -677,6 +686,10 @@ $output->setLink($feed->get_link()); // Google Reader uses this for pulling in f
 if ($img_url = $feed->get_image_url()) {
 	$output->setImage($feed->get_title(), $feed->get_link(), $img_url);
 }
+if ($feed_parse_failure) {
+	$output->setTitle('Feed parsing failed');
+	$output->setDescription('Unable to parse source URL as a feed. See item details for diagnostics.');
+}
 
 ////////////////////////////////////////////
 // Loop through feed items
@@ -725,11 +738,21 @@ foreach ($items as $key => $item) {
 		$feed_item_title = strip_tags(htmlspecialchars_decode($feed_item_title, ENT_QUOTES | ENT_HTML401));
 	}
 	$newitem = $output->createNewItem();
+	$item_failure_reasons = array();
 	$newitem->setTitle($feed_item_title);
 	if ($permalink !== false) {
 		$newitem->setLink($permalink);
 	} else {
 		$newitem->setLink($item->get_permalink());
+	}
+	if ($feed_parse_failure) {
+		if (trim((string)$feed_item_title) === "") {
+			$newitem->setTitle("Feed parsing failed for source URL");
+		}
+		$newitem->setDescription(ftr_failure_html("Full-Text RSS could not parse the supplied URL as a valid RSS or Atom feed.", $feed_parse_failure_reasons, $feed_parse_failure_context));
+		$output->addItem($newitem);
+		$item_count++;
+		continue;
 	}
 	// Status codes to accept (200 range)
 	// Some sites might return correct content with error status codes
@@ -758,6 +781,14 @@ foreach ($items as $key => $item) {
 				$extracted_title = $mime_info['name'];
 				$do_content_extraction = false;
 			}
+		} else {
+			if (!$permalink) {
+				$item_failure_reasons[] = 'The feed item does not contain a usable permalink.';
+			} elseif (!$response) {
+				$item_failure_reasons[] = 'The article could not be fetched.';
+			} else {
+				$item_failure_reasons[] = 'The article fetch returned an HTTP status that Full-Text RSS does not treat as usable content.';
+			}
 		}
 		if ($do_content_extraction) {
 			$html = $response['body'];
@@ -780,6 +811,10 @@ foreach ($items as $key => $item) {
 				$mime_info = get_mime_action_info($single_page_response['headers']);
 				if (isset($mime_info['action'])) {
 					if ($mime_info['action'] == 'exclude') {
+						$item_failure_reasons[] = 'The fetched URL returned a content type configured to be excluded from extraction.';
+						$newitem->setDescription(ftr_failure_html('Full-text retrieval was skipped for this item.', $item_failure_reasons, ftr_response_context($response)));
+						$output->addItem($newitem);
+						$item_count++;
 						continue; // skip this feed item entry
 					} elseif ($mime_info['action'] == 'link') {
 						if ($mime_info['type'] == 'image') {
@@ -893,12 +928,12 @@ foreach ($items as $key => $item) {
 				debug('Failed to extract, so skipping (due to exclude on fail parameter)');
 				continue; // skip this and move to next item
 			}
+			$item_failure_reasons = array_merge($item_failure_reasons, ftr_build_extraction_failure_reasons($extractor, isset($response) ? $response : null, isset($effective_url) ? $effective_url : null));
+			$item_failure_reasons = array_values(array_unique(array_filter($item_failure_reasons)));
 			if (_FF_FTR_MODE === 'simple') {
 				$html = '';
 			} else {
-				//TODO: get text sample for language detection
-				$html = $options->error_message;
-				// keep the original item description
+				$html = ftr_failure_html('Full-text extraction failed for this item.', $item_failure_reasons, ftr_response_context(isset($response) ? $response : null));
 				$html .= $item->get_description();
 			}
 		} else {
@@ -1677,6 +1712,112 @@ function make_substitutions($string) {
 	$string = str_replace('{url}', htmlspecialchars($item->get_permalink()), $string);
 	$string = str_replace('{effective-url}', htmlspecialchars($effective_url), $string);
 	return $string;
+}
+
+
+function ftr_response_context($response) {
+	$context = array();
+	if (!is_array($response)) return $context;
+	if (isset($response['status_code'])) $context['HTTP status'] = $response['status_code'];
+	if (!empty($response['effective_url'])) $context['Final URL'] = $response['effective_url'];
+	if (!empty($response['headers']) && preg_match('/^Content-Type:\s*([^\r\n]+)/mi', $response['headers'], $m)) {
+		$context['Content-Type'] = trim($m[1]);
+	}
+	return $context;
+}
+
+function ftr_build_feed_failure_context($url) {
+	$context = array();
+	if (!empty($url)) $context['Requested URL'] = $url;
+	if (SimplePie_HumbleHttpAgent::$last_status_code !== null) $context['HTTP status'] = SimplePie_HumbleHttpAgent::$last_status_code;
+	if (!empty(SimplePie_HumbleHttpAgent::$last_effective_url)) $context['Final URL'] = SimplePie_HumbleHttpAgent::$last_effective_url;
+	if (!empty(SimplePie_HumbleHttpAgent::$last_headers) && preg_match('/^Content-Type:\s*([^\r\n]+)/mi', SimplePie_HumbleHttpAgent::$last_headers, $m)) {
+		$context['Content-Type'] = trim($m[1]);
+	}
+	if (!empty(SimplePie_HumbleHttpAgent::$last_body_sample)) {
+		$sample = trim(preg_replace('/\s+/', ' ', strip_tags(SimplePie_HumbleHttpAgent::$last_body_sample)));
+		if ($sample !== '') $context['Body sample'] = mb_substr($sample, 0, 280);
+	}
+	return $context;
+}
+
+function ftr_failure_html($summary, $reasons=array(), $context=array()) {
+	$html = '<div class="ftr-error"><p><strong>'.htmlspecialchars((string)$summary, ENT_QUOTES | ENT_HTML401, 'UTF-8').'</strong></p>';
+	if (!empty($reasons)) {
+		$html .= '<ul>';
+		foreach ($reasons as $reason) {
+			if ($reason === null || $reason === '') continue;
+			$html .= '<li>'.htmlspecialchars((string)$reason, ENT_QUOTES | ENT_HTML401, 'UTF-8').'</li>';
+		}
+		$html .= '</ul>';
+	}
+	if (!empty($context)) {
+		$html .= '<p><strong>Details:</strong></p><ul>';
+		foreach ($context as $label => $value) {
+			if ($value === null || $value === '') continue;
+			$html .= '<li><strong>'.htmlspecialchars((string)$label, ENT_QUOTES | ENT_HTML401, 'UTF-8').':</strong> '.htmlspecialchars((string)$value, ENT_QUOTES | ENT_HTML401, 'UTF-8').'</li>';
+		}
+		$html .= '</ul>';
+	}
+	$html .= '</div>';
+	return $html;
+}
+
+function ftr_build_feed_failure_reasons($feed, $url) {
+	$reasons = array();
+	if (is_object($feed) && method_exists($feed, 'error')) {
+		$err = $feed->error();
+		if (is_array($err)) $err = implode('; ', array_filter($err));
+		if (is_string($err) && trim($err) !== '') {
+			$reasons[] = 'SimplePie reported: '.trim($err);
+		}
+	}
+	if (!empty(SimplePie_HumbleHttpAgent::$last_error)) {
+		$reasons[] = 'HTTP layer reported: '.SimplePie_HumbleHttpAgent::$last_error;
+	}
+	if (SimplePie_HumbleHttpAgent::$last_status_code !== null) {
+		$reasons[] = 'The feed URL returned HTTP '.SimplePie_HumbleHttpAgent::$last_status_code.'.';
+	}
+	if (!empty(SimplePie_HumbleHttpAgent::$last_headers) && preg_match('/^Content-Type:\s*([^\r\n]+)/mi', SimplePie_HumbleHttpAgent::$last_headers, $m)) {
+		$reasons[] = 'The feed response Content-Type was '.trim($m[1]).'.';
+	}
+	if (empty($reasons)) {
+		$reasons[] = 'The URL could not be parsed as a valid RSS or Atom feed.';
+	}
+	return array_values(array_unique($reasons));
+}
+
+function ftr_build_extraction_failure_reasons($extractor, $response, $effective_url) {
+	$reasons = array();
+	if (!is_array($response) || empty($response['body'])) {
+		$reasons[] = 'The response body was empty.';
+		return $reasons;
+	}
+	$headers = isset($response['headers']) ? $response['headers'] : '';
+	if (preg_match('/^Content-Type:\s*([^\r\n]+)/mi', $headers, $m)) {
+		$content_type = strtolower(trim($m[1]));
+		if (strpos($content_type, 'html') === false && strpos($content_type, 'xml') === false && strpos($content_type, 'xhtml') === false) {
+			$reasons[] = 'The fetched resource was not served as HTML.';
+		}
+	}
+	$body = $response['body'];
+	if (stripos($body, '<html') === false && stripos($body, '<body') === false) {
+		$reasons[] = 'The fetched response did not look like a normal HTML article page.';
+	}
+	if (preg_match('~<(rss|feed)\b~i', $body)) {
+		$reasons[] = 'The fetched URL appears to return a feed, not an article page.';
+	}
+	if (preg_match('~captcha|cf-browser-verification|cloudflare|access denied|forbidden|bot check~i', $body)) {
+		$reasons[] = 'The fetched page appears to be a bot check, access restriction, or interstitial instead of article content.';
+	}
+	if (is_object($extractor) && method_exists($extractor, 'getSiteConfig')) {
+		$site_config = $extractor->getSiteConfig();
+		if (!$site_config) {
+			$reasons[] = 'No matching site config was available, so generic extraction rules were used.';
+		}
+	}
+	$reasons[] = 'The extractor could not isolate a main content block from the fetched page.';
+	return array_values(array_unique($reasons));
 }
 
 function get_cache() {
