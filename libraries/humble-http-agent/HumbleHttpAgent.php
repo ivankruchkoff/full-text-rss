@@ -45,6 +45,9 @@ class HumbleHttpAgent
 	public $rewriteUrls = array();
 	public $userAgentDefault;
 	public $referer;
+	public $cloudscraperEnabled = true;
+	public $cloudscraperTimeout = 30;
+	public $cloudscraperHostWhitelist = array();
 	//public $userAgent = 'Mozilla/5.0';
 	
 	// Prevent certain file/mime types
@@ -803,6 +806,142 @@ class HumbleHttpAgent
 		}
 	}
 	
+	protected function hostAllowsExternalFallback($url) {
+		$host = @parse_url($url, PHP_URL_HOST);
+		if (!is_string($host) || $host === '') return false;
+		$host = strtolower($host);
+		if (substr($host, 0, 4) === 'www.') $host = substr($host, 4);
+		if (empty($this->cloudscraperHostWhitelist)) return true;
+		foreach ($this->cloudscraperHostWhitelist as $allowed) {
+			$allowed = strtolower(trim($allowed));
+			if ($allowed === '') continue;
+			if ($host === $allowed || substr($host, -strlen('.'.$allowed)) === '.'.$allowed) return true;
+		}
+		return false;
+	}
+
+	protected function shouldUseExternalFallback($url, array $response) {
+		if (!$this->cloudscraperEnabled) return false;
+		if (!$this->hostAllowsExternalFallback($url)) return false;
+		$status = isset($response['status_code']) ? (int)$response['status_code'] : 0;
+		$headers = isset($response['headers']) ? (string)$response['headers'] : '';
+		$body = isset($response['body']) ? (string)$response['body'] : '';
+		if (in_array($status, array(403, 429, 503), true)) return true;
+		if ($status === 0 && trim($body) === '') return true;
+		$haystack = strtolower($headers."
+".$body);
+		$markers = array('just a moment...', 'cf-mitigated', 'enable javascript and cookies to continue', '/cdn-cgi/challenge-platform/', 'attention required!', 'captcha', 'access denied');
+		foreach ($markers as $marker) {
+			if ($haystack !== '' && strpos($haystack, strtolower($marker)) !== false) return true;
+		}
+		return false;
+	}
+
+	protected function buildHeaderStringFromArray(array $headers) {
+		$out = '';
+		foreach ($headers as $key => $val) {
+			if (is_array($val)) {
+				foreach ($val as $v) $out .= $key.': '.$v."\n";
+			} else {
+				$out .= $key.': '.$val."\n";
+			}
+		}
+		return trim($out);
+	}
+
+	protected function fetchWithCloudscraper($url, $timeout=30) {
+		$python = trim((string)@shell_exec('command -v python3 2>/dev/null'));
+		if ($python === '') return null;
+		$script = <<<'PYTHON'
+import json, sys
+try:
+    import cloudscraper
+except Exception as e:
+    print(json.dumps({"ok": False, "error": "cloudscraper import failed: %s" % e}))
+    raise SystemExit(0)
+url = sys.argv[1]
+timeout = int(sys.argv[2])
+try:
+    scraper = cloudscraper.create_scraper()
+    r = scraper.get(url, timeout=timeout, allow_redirects=True)
+    print(json.dumps({
+        "ok": True,
+        "status_code": int(r.status_code),
+        "final_url": r.url,
+        "headers": dict(r.headers),
+        "body": r.text
+    }))
+except Exception as e:
+    print(json.dumps({"ok": False, "error": str(e)}))
+PYTHON;
+		$tmp = @tempnam(sys_get_temp_dir(), 'ftr_cs_');
+		if ($tmp === false) return null;
+		@file_put_contents($tmp, $script);
+		$cmd = escapeshellarg($python).' '.escapeshellarg($tmp).' '.escapeshellarg($url).' '.escapeshellarg((string)$timeout).' 2>/dev/null';
+		$out = @shell_exec($cmd);
+		@unlink($tmp);
+		if (!is_string($out) || trim($out) === '') return null;
+		$data = json_decode($out, true);
+		if (!is_array($data) || empty($data['ok']) || empty($data['body'])) return null;
+		return array(
+			'status_code' => isset($data['status_code']) ? (int)$data['status_code'] : 0,
+			'effective_url' => isset($data['final_url']) ? (string)$data['final_url'] : $url,
+			'headers' => isset($data['headers']) && is_array($data['headers']) ? $this->buildHeaderStringFromArray($data['headers']) : '',
+			'body' => (string)$data['body'],
+			'method' => 'GET',
+			'location' => null,
+			'fetch_method' => 'cloudscraper'
+		);
+	}
+
+	protected function fetchWithCurlImpersonate($url, $timeout=30) {
+		$bin = trim((string)@shell_exec('command -v curl_chrome110 2>/dev/null'));
+		if ($bin === '') return null;
+		$tmpHeaders = @tempnam(sys_get_temp_dir(), 'ftr_ci_h_');
+		$tmpBody = @tempnam(sys_get_temp_dir(), 'ftr_ci_b_');
+		$tmpMeta = @tempnam(sys_get_temp_dir(), 'ftr_ci_m_');
+		if ($tmpHeaders === false || $tmpBody === false || $tmpMeta === false) return null;
+		$cmd = escapeshellcmd($bin).' -sS -L --max-time '.intval($timeout).' -D '.escapeshellarg($tmpHeaders).' -o '.escapeshellarg($tmpBody).' -w '.escapeshellarg('%{http_code}\n%{url_effective}').' '.escapeshellarg($url).' > '.escapeshellarg($tmpMeta).' 2>/dev/null';
+		@system($cmd, $exitCode);
+		$body = @file_get_contents($tmpBody);
+		$headers = @file_get_contents($tmpHeaders);
+		$meta = @file($tmpMeta, FILE_IGNORE_NEW_LINES);
+		@unlink($tmpHeaders); @unlink($tmpBody); @unlink($tmpMeta);
+		if ($exitCode !== 0 || !is_string($body) || trim($body) === '') return null;
+		$status = isset($meta[0]) ? (int)$meta[0] : 0;
+		$effective = isset($meta[1]) ? (string)$meta[1] : $url;
+		$headerBlocks = preg_split("/\r?\n\r?\n/", trim((string)$headers));
+		$lastHeaders = trim((string)end($headerBlocks));
+		return array(
+			'status_code' => $status,
+			'effective_url' => $effective,
+			'headers' => $lastHeaders,
+			'body' => $body,
+			'method' => 'GET',
+			'location' => null,
+			'fetch_method' => 'curl_chrome110'
+		);
+	}
+
+	protected function applyExternalFallback($url, array $response) {
+		if (!$this->shouldUseExternalFallback($url, $response)) return $response;
+		$this->debug('......trying cloudscraper fallback for: '.$url);
+		$fallback = $this->fetchWithCloudscraper($url, $this->cloudscraperTimeout);
+		if (is_array($fallback) && !empty($fallback['body'])) {
+			$this->debug('......cloudscraper fallback succeeded for: '.$url);
+			return array_merge($response, $fallback);
+		}
+		$this->debug('......cloudscraper fallback failed for: '.$url);
+		$this->debug('......trying curl_chrome110 fallback for: '.$url);
+		$fallback = $this->fetchWithCurlImpersonate($url, $this->cloudscraperTimeout);
+		if (is_array($fallback) && !empty($fallback['body'])) {
+			$this->debug('......curl_chrome110 fallback succeeded for: '.$url);
+			return array_merge($response, $fallback);
+		}
+		$this->debug('......curl_chrome110 fallback failed for: '.$url);
+		return $response;
+	}
+
 	public function handleCurlResponse($response, $info, $request) {
 		$orig = $request->url_original;
 		$this->requests[$orig]['headers'] = substr($response, 0, $info['header_size']);
@@ -812,6 +951,10 @@ class HumbleHttpAgent
 		$this->requests[$orig]['status_code'] = (int)$info['http_code'];
 		if (preg_match('/^Location:(.*?)$/mi', $this->requests[$orig]['headers'], $match)) {
 			$this->requests[$orig]['location'] =  trim($match[1]);
+		}
+		$this->requests[$orig] = $this->applyExternalFallback($request->url, $this->requests[$orig]);
+		if (preg_match('/^Location:(.*?)$/mi', $this->requests[$orig]['headers'], $match)) {
+			$this->requests[$orig]['location'] = trim($match[1]);
 		}
 	}
 	
@@ -858,6 +1001,10 @@ class HumbleHttpAgent
 			unset($this->requests[$url]);
 		}
 		*/
+		if ($response) {
+			$response = $this->applyExternalFallback($url, $response);
+			$this->requests[$url] = $response;
+		}
 		if ($remove && $response) unset($this->requests[$url]);
 		if ($gzdecode && stripos($response['headers'], 'Content-Encoding: gzip')) {
 			if ($html = @gzdecode($response['body'])) {
